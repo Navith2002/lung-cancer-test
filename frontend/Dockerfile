@@ -13,6 +13,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_FONT_IGNORE_FETCH_ERRORS=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN rm -f next.config.ts
 RUN npm run build
 
 FROM node:20-bullseye-slim AS runner
