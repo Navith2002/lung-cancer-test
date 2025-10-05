@@ -25,8 +25,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
-RUN rm -f next.config.ts
+COPY --from=builder /app/next.config.js ./next.config.js
 RUN chown -R node:node /app
 USER node
 EXPOSE 3000
