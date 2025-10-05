@@ -10,6 +10,7 @@ This directory contains the Next.js frontend for the lung cancer risk prediction
 - `npm run dev` — start the development server at [http://localhost:3000](http://localhost:3000)
 - `npm run build` — generate an optimized production build (used in CI/Docker)
 - `npm start` — run the production build with `next start`
+- `npm test` — run the ESLint suite (alias for `npm run lint`)
 
 ## Styling notes
 The default layout uses system UI fonts so the Docker image does not require network access for font downloads. Global styles live in [`app/globals.css`](app/globals.css) and the top-level layout is defined in [`app/layout.tsx`](app/layout.tsx).
