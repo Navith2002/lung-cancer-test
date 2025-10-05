@@ -3,15 +3,54 @@ import React, { useEffect, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
+type YesNo = "yes" | "no";
+type RadonLevel = "low" | "medium" | "high";
+type AlcoholLevel = "none" | "moderate" | "heavy";
+
+type UiInputs = {
+  GENDER: 0 | 1;
+  RADON_EXPOSURE: RadonLevel;
+  ALCOHOL_CONSUMPTION: AlcoholLevel;
+  AGE: number;
+  PACK_YEARS: number;
+  ASBESTOS_EXPOSURE: YesNo;
+  SECONDHAND_SMOKE_EXPOSURE: YesNo;
+  COPD_DIAGNOSIS: YesNo;
+  FAMILY_HISTORY: YesNo;
+};
+
+type PredictPayload = {
+  age: number;
+  pack_years: number;
+  gender: UiInputs["GENDER"];
+  radon_exposure: UiInputs["RADON_EXPOSURE"];
+  asbestos_exposure: UiInputs["ASBESTOS_EXPOSURE"];
+  secondhand_smoke_exposure: UiInputs["SECONDHAND_SMOKE_EXPOSURE"];
+  copd_diagnosis: UiInputs["COPD_DIAGNOSIS"];
+  alcohol_consumption: UiInputs["ALCOHOL_CONSUMPTION"];
+  family_history: UiInputs["FAMILY_HISTORY"];
+};
+
 type PredictResponse = {
   model: string;
-  risk_percentage: number;                 // main number (adjusted if available)
-  raw_risk_percentage?: number | null;     // under training prior
-  adjusted_risk_percentage?: number | null;// under pi_deploy
+  risk_percentage: number;
+  raw_risk_percentage?: number | null;
+  adjusted_risk_percentage?: number | null;
   adjusted_for_prevalence: boolean;
   pi_train?: number | null;
   pi_deploy?: number | null;
-  inputs_used?: Record<string, any>;
+  inputs_used?: Record<string, string | number | boolean | null>;
+};
+
+type ModelInfo = {
+  feature_order?: string[];
+  numeric_cols?: string[];
+  binary_cols?: string[];
+  one_hot_cols?: string[];
+  radon_levels?: string[];
+  alcohol_levels?: string[];
+  pi_train?: number | null;
+  pi_deploy?: number | null;
 };
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -23,47 +62,75 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- map UI state to backend payload ---
-// Only coerce numerics for age/pack_years; pass strings for categories (server normalizes)
-function uiToApiPayload(inputs: any) {
-  const num = (v: any) => (v === "" || v == null ? 0 : Number(v));
-  return {
-    age: num(inputs.AGE),
-    pack_years: num(inputs.PACK_YEARS),
-    gender: inputs.GENDER, // 0/1 is fine; backend also accepts "male"/"female"
-    radon_exposure: inputs.RADON_EXPOSURE,               // "low" | "medium" | "high"
-    asbestos_exposure: inputs.ASBESTOS_EXPOSURE,         // "yes"/"no"
-    secondhand_smoke_exposure: inputs.SECONDHAND_SMOKE_EXPOSURE, // "yes"/"no"
-    copd_diagnosis: inputs.COPD_DIAGNOSIS,               // "yes"/"no"
-    alcohol_consumption: inputs.ALCOHOL_CONSUMPTION,     // "none" | "moderate" | "heavy"
-    family_history: inputs.FAMILY_HISTORY,               // "yes"/"no"
-  };
-}
+const toNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
-async function fetchPredict(inputs: any, baselinePct?: number) {
+const toBinary = (value: unknown): 0 | 1 => (toNumber(value) >= 1 ? 1 : 0);
+
+const uiToApiPayload = (inputs: UiInputs): PredictPayload => ({
+  age: toNumber(inputs.AGE),
+  pack_years: toNumber(inputs.PACK_YEARS),
+  gender: inputs.GENDER,
+  radon_exposure: inputs.RADON_EXPOSURE,
+  asbestos_exposure: inputs.ASBESTOS_EXPOSURE,
+  secondhand_smoke_exposure: inputs.SECONDHAND_SMOKE_EXPOSURE,
+  copd_diagnosis: inputs.COPD_DIAGNOSIS,
+  alcohol_consumption: inputs.ALCOHOL_CONSUMPTION,
+  family_history: inputs.FAMILY_HISTORY,
+});
+
+const fetchPredict = async (
+  inputs: UiInputs,
+  baselinePct?: number
+): Promise<PredictResponse> => {
   const payload = uiToApiPayload(inputs);
-  const q = baselinePct != null ? `?pi_deploy=${(baselinePct / 100).toFixed(4)}` : "";
-  const r = await fetch(`${API_BASE}/predict${q}`, {
+  const query = baselinePct != null ? `?pi_deploy=${(baselinePct / 100).toFixed(4)}` : "";
+  const response = await fetch(`${API_BASE}/predict${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!r.ok) throw new Error(`POST /predict failed: ${r.status} ${await r.text()}`);
-  return (await r.json()) as PredictResponse;
-}
+  if (!response.ok) {
+    throw new Error(`POST /predict failed: ${response.status} ${await response.text()}`);
+  }
+  return (await response.json()) as PredictResponse;
+};
 
-async function fetchModelInfo() {
-  const r = await fetch(`${API_BASE}/model-info`);
-  if (!r.ok) throw new Error(`GET /model-info failed: ${r.status}`);
-  return r.json();
-}
+const fetchModelInfo = async (): Promise<ModelInfo> => {
+  const response = await fetch(`${API_BASE}/model-info`);
+  if (!response.ok) {
+    throw new Error(`GET /model-info failed: ${response.status}`);
+  }
+  return (await response.json()) as ModelInfo;
+};
+
+const describeError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return typeof error === "string" ? error : "Prediction failed";
+};
+
+const binaryFields: Array<[
+  keyof Pick<UiInputs, "ASBESTOS_EXPOSURE" | "SECONDHAND_SMOKE_EXPOSURE" | "COPD_DIAGNOSIS" | "FAMILY_HISTORY">,
+  string
+]> = [
+  ["ASBESTOS_EXPOSURE", "Asbestos exposure"],
+  ["SECONDHAND_SMOKE_EXPOSURE", "Secondhand smoke exposure"],
+  ["COPD_DIAGNOSIS", "COPD diagnosis"],
+  ["FAMILY_HISTORY", "Family history of lung cancer"],
+];
 
 export default function Page() {
-  // Defaults aligned to new encodings
-  const [inputs, setInputs] = useState<any>({
-    GENDER: 1, // 0=female, 1=male
-    RADON_EXPOSURE: "low",        // "low" | "medium" | "high"
-    ALCOHOL_CONSUMPTION: "none",  // "none" | "moderate" | "heavy"
+  const [inputs, setInputs] = useState<UiInputs>({
+    GENDER: 1,
+    RADON_EXPOSURE: "low",
+    ALCOHOL_CONSUMPTION: "none",
     AGE: 60,
     PACK_YEARS: 20,
     ASBESTOS_EXPOSURE: "no",
@@ -71,31 +138,31 @@ export default function Page() {
     COPD_DIAGNOSIS: "no",
     FAMILY_HISTORY: "no",
   });
-
-  // Baseline slider (used as pi_deploy in %)
   const [baseline, setBaseline] = useState<number>(50);
   const [pct, setPct] = useState<string>("—");
   const [details, setDetails] = useState<PredictResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [modelInfo, setModelInfo] = useState<any>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 
   useEffect(() => {
     fetchModelInfo().then(setModelInfo).catch(() => {});
   }, []);
 
-  const onChange = (k: string, v: any) => setInputs((s: any) => ({ ...s, [k]: v }));
+  const onChange = <K extends keyof UiInputs>(key: K, value: UiInputs[K]) => {
+    setInputs((prev) => ({ ...prev, [key]: value }));
+  };
 
   const onPredict = async () => {
     setError(null);
     setLoading(true);
     try {
-      const data = await fetchPredict(inputs, baseline); // sends slider as pi_deploy
+      const data = await fetchPredict(inputs, baseline);
       const main = Number(data.risk_percentage) || 0;
-      setPct(main.toFixed(1) + "%");
+      setPct(`${main.toFixed(1)}%`);
       setDetails(data);
-    } catch (e: any) {
-      setError(e?.message ?? "Prediction failed");
+    } catch (err) {
+      setError(describeError(err));
       setPct("—");
       setDetails(null);
     } finally {
@@ -127,7 +194,6 @@ export default function Page() {
             <div className="rounded-2xl bg-white p-6 shadow">
               <h2 className="mb-4 text-xl font-semibold">Demographics & Exposure</h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {/* Gender */}
                 <div>
                   <label className="mb-1 block text-sm font-medium">Gender (0=female, 1=male)</label>
                   <input
@@ -137,17 +203,16 @@ export default function Page() {
                     min={0}
                     max={1}
                     step={1}
-                    onChange={(e) => onChange("GENDER", Number(e.target.value))}
+                    onChange={(event) => onChange("GENDER", toBinary(event.target.value))}
                   />
                 </div>
 
-                {/* Radon Exposure (Low/Medium/High) */}
                 <div>
                   <label className="mb-1 block text-sm font-medium">Radon Exposure</label>
                   <select
                     className="w-full rounded-xl border px-3 py-2"
                     value={inputs.RADON_EXPOSURE}
-                    onChange={(e) => onChange("RADON_EXPOSURE", e.target.value)}
+                    onChange={(event) => onChange("RADON_EXPOSURE", event.target.value as RadonLevel)}
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -155,13 +220,12 @@ export default function Page() {
                   </select>
                 </div>
 
-                {/* Alcohol Consumption (None/Moderate/Heavy) */}
                 <div>
                   <label className="mb-1 block text-sm font-medium">Alcohol Consumption</label>
                   <select
                     className="w-full rounded-xl border px-3 py-2"
                     value={inputs.ALCOHOL_CONSUMPTION}
-                    onChange={(e) => onChange("ALCOHOL_CONSUMPTION", e.target.value)}
+                    onChange={(event) => onChange("ALCOHOL_CONSUMPTION", event.target.value as AlcoholLevel)}
                   >
                     <option value="none">None</option>
                     <option value="moderate">Moderate</option>
@@ -169,7 +233,6 @@ export default function Page() {
                   </select>
                 </div>
 
-                {/* Age */}
                 <div>
                   <label className="mb-1 block text-sm font-medium">Age (years)</label>
                   <input
@@ -177,11 +240,10 @@ export default function Page() {
                     className="w-full rounded-xl border px-3 py-2"
                     value={inputs.AGE}
                     min={0}
-                    onChange={(e) => onChange("AGE", Number(e.target.value))}
+                    onChange={(event) => onChange("AGE", toNumber(event.target.value))}
                   />
                 </div>
 
-                {/* Pack-years */}
                 <div>
                   <label className="mb-1 block text-sm font-medium">Pack-years (smoking)</label>
                   <input
@@ -189,25 +251,17 @@ export default function Page() {
                     className="w-full rounded-xl border px-3 py-2"
                     value={inputs.PACK_YEARS}
                     min={0}
-                    onChange={(e) => onChange("PACK_YEARS", Number(e.target.value))}
+                    onChange={(event) => onChange("PACK_YEARS", toNumber(event.target.value))}
                   />
                 </div>
 
-                {/* Other binary features as Yes/No */}
-                {(
-                  [
-                    ["ASBESTOS_EXPOSURE", "Asbestos exposure"],
-                    ["SECONDHAND_SMOKE_EXPOSURE", "Secondhand smoke exposure"],
-                    ["COPD_DIAGNOSIS", "COPD diagnosis"],
-                    ["FAMILY_HISTORY", "Family history of lung cancer"],
-                  ] as const
-                ).map(([key, label]) => (
+                {binaryFields.map(([key, label]) => (
                   <div key={key}>
                     <label className="mb-1 block text-sm font-medium">{label}</label>
                     <select
                       className="w-full rounded-xl border px-3 py-2"
-                      value={(inputs as any)[key]}
-                      onChange={(e) => onChange(key, e.target.value)}
+                      value={inputs[key]}
+                      onChange={(event) => onChange(key, event.target.value as YesNo)}
                     >
                       <option value="no">No</option>
                       <option value="yes">Yes</option>
@@ -237,11 +291,11 @@ export default function Page() {
           <aside className="md:col-span-1">
             <div className="sticky top-6 rounded-2xl bg-white p-6 shadow">
               <h2 className="mb-2 text-xl font-semibold">Predicted Risk</h2>
-
               <div className="mb-2 flex items-center gap-2">
                 {details?.adjusted_for_prevalence ? (
                   <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs text-emerald-700">
-                    Adjusted to π<sub>deploy</sub>{details?.pi_deploy != null ? ` = ${(details.pi_deploy*100).toFixed(2)}%` : ""}
+                    Adjusted to π<sub>deploy</sub>
+                    {details?.pi_deploy != null ? ` = ${(details.pi_deploy * 100).toFixed(2)}%` : ""}
                   </span>
                 ) : (
                   <span className="rounded-full bg-amber-100 px-2 py-1 text-xs text-amber-700">
@@ -280,7 +334,7 @@ export default function Page() {
                   max={70}
                   step={1}
                   value={baseline}
-                  onChange={(e) => setBaseline(Number(e.target.value))}
+                  onChange={(event) => setBaseline(Number(event.target.value))}
                 />
                 <div className="mt-1 text-xs text-gray-600">Baseline: {baseline.toFixed(0)}%</div>
 
