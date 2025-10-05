@@ -13,6 +13,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_FONT_IGNORE_FETCH_ERRORS=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN rm -f next.config.ts
 RUN npm run build
 
 FROM node:20-bullseye-slim AS runner
@@ -24,7 +25,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/next.config.ts ./next.config.ts
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+RUN rm -f next.config.ts
 RUN chown -R node:node /app
 USER node
 EXPOSE 3000
