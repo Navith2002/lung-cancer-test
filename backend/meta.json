@@ -58,5 +58,5 @@
     "scikit_learn": "1.5.2",
     "xgboost": "2.1.4"
   },
-  "csv_path_used": "E:/3rd_YR_2nd_SEM/FDM/mini-project/LungCancer_predication/lung_cancer_dataset.csv"
+  "csv_path_used": "/workspace/lung-cancer-test/backend/lung_cancer_dataset.csv"
 }
