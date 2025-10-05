@@ -18,11 +18,11 @@ Artifacts (saved next to this file)
 - meta.json
 
 Run:
-  python lungcancer.py
+  python lungcancer.py  # defaults to backend/lung_cancer_dataset.csv
 
-(Optionally) set CSV via env:
-  PowerShell:  $env:LUNG_CANCER_CSV="E:\path\lung_cancer_dataset.csv"
-  CMD:         set LUNG_CANCER_CSV=E:\path\lung_cancer_dataset.csv
+(Optionally) override CSV via env:
+  PowerShell:  $env:LUNG_CANCER_CSV="C:\path\lung_cancer_dataset.csv"
+  CMD:         set LUNG_CANCER_CSV=C:\path\lung_cancer_dataset.csv
   mac/linux:   export LUNG_CANCER_CSV=/path/to/lung_cancer_dataset.csv
 """
 
@@ -58,7 +58,7 @@ import sklearn
 BASE_DIR = os.path.dirname(__file__)
 CSV_PATH = os.getenv(
     "LUNG_CANCER_CSV",
-    r"E:/3rd_YR_2nd_SEM/FDM/mini-project/LungCancer_predication/lung_cancer_dataset.csv",
+    os.path.join(BASE_DIR, "lung_cancer_dataset.csv"),
 )
 SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
 MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
